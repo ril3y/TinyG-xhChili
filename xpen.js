@@ -44,7 +44,7 @@ var main = function() {
                         //=======================
                         //Data Message Update
                         //=======================
-                        console.log("Status Report Update: ", message.D);
+                        //console.log("Status Report Update: ", message.D);
 
                     } else if (message.hasOwnProperty("Commands")) {
                         //console.log("Command Message Recvd ", message);
@@ -62,11 +62,11 @@ var main = function() {
 
                     }else {
                         //Default Case when not sure of the message
-                        console.log("RECV DATA <==:", message);
+                        //console.log("RECV DATA <==:", message);
                     }
 
                 } catch (e) {
-                   // console.log("ERROR PARSING: ", e); //Just ignore the non json messages
+                    //console.log("ERROR PARSING: ", e); //Just ignore the non json messages
                 }
             }
         }//end on message data
@@ -175,11 +175,12 @@ var getDialSetting = function (dialByte) {
 
 var CMDS = [
 
-    {name: "keyup", value: [0x00, 0x9a], tinyg: "None"},
+    {name: "keyup", value: [0x00, 0x9a], tinyg: "\n"},
     {name: "reset", value: [0x17, 0x8d], tinyg: "None"},
     {name: "sleep", value: [0x00, 0x00], tinyg: "None"},
     {name: "stop", value: [0x16, 0x8c], tinyg: "!\n%\n"},
-    {name: "arrow1", value: [0x01, 0x9b], tinyg: "None"},
+    {name: "arrow1", value: [0x01, 0x9b], tinyg: "g28.3x0y0z0a0\n"}, //Set Zero
+    {name: "arrow2", value: [0x09, 0x93], tinyg: "g0x0y0z0a0\n"}, //Go to zero
     {name: "rewind", value: [0x03, 0x99], tinyg: "None"},
     {name: "spindle", value: [0x0c, 0x96], tinyg: "None"},
     {name: "half", value: [0x06, 0x9c], tinyg: "None"},
@@ -203,7 +204,6 @@ var parseCommand = function (data) {
             return (CMDS[i]);
 
         } //eek!
-        //console.log("COMMAND: " + CMDS[i].name);
 
 
     }
@@ -230,6 +230,14 @@ var doJog = function(dialSetting, cmd){
 }
 
 
+//This is our generic send method
+var sendToSPJS = function(cmdString){
+    if(ws.readyState == 1) {
+        //readystate == 1 means the websocket is open so we will try to write ot it.
+        console.log("Sending to Websocket: " + cmdString);
+        ws.send("send " + serialport +" "+ cmdString);
+    }
+}
 
 
 var parseDataPacket = function (data) {
@@ -238,23 +246,48 @@ var parseDataPacket = function (data) {
         _tmpCmd = parseCommand(data);
 
 
-        if (_tmpCmd) {
+        if (_tmpCmd && dialSetting != "DIAL OFF") {
             console.log("DIAL: " + dialSetting + " Command: " + _tmpCmd.name, " TinyG: " + _tmpCmd.tinyg);
 
-            //We got a jog command now we need to do it!
-            if(_tmpCmd.name == "jog" && dialSetting != "DIAL OFF"){
-                isJogging = true
-                _tmpCmd = doJog(dialSetting, _tmpCmd);
-                console.log("JOG", _tmpCmd);
+
+            switch(_tmpCmd.name){
+
+
+                case("keyup"):
+                    //If we were jogging we are in incremental mode
+                    //We need to exit this mode now that we are done jogging.
+                    if(isJogging){
+                        isJogging = false;
+                        sendToSPJS("g90\n")
+                        console.log("::-----Exiting Jog Mode------::");
+                    }
+
+                    break;
+
+                case("jog"):
+                    console.log("::-----Entering Jog Mode------::");
+                    isJogging = true;
+                    _tmpCmd = doJog(dialSetting, _tmpCmd);
+                    sendToSPJS(_tmpCmd.tinyg);
+                    break;
+
+                case("zero"):
+                    sendToSPJS(_tmpCmd.tinyg+dialSetting+"0\n");
+                    break;
+
+                case("arrow2"): //Arrow2 is, at least for now go to zero on all axis
+                    sendToSPJS(_tmpCmd.tinyg);
+                    break;
+
+                default:
+                    console.log(_tmpCmd.name, _tmpCmd.value);
+                    break;
+
 
             }
 
-            if(ws.readyState == 1 && _tmpCmd.tinyg != "None") {
-                //readystate == 1 means the websocket is open so we will try to write ot it.
-                console.log("Sending to Websocket: " +"send " + serialport +" "+ _tmpCmd.tinyg);
-                ws.send("send " + serialport +" "+ _tmpCmd.tinyg);
 
-            }
+
         } else {
             console.log("DIAL: " + dialSetting + " Command Code Unknown: ", data);
 
