@@ -4,6 +4,9 @@ A NodeJS User Land driver for the Xhc CNC Pendant for Chilipeppr and SPJS
 
 ##Installation:
 This code assumes you have NodeJS installed and npm is in your path.
+npm install
+
+This should get everything you need.
 
 
 ##Usage:
