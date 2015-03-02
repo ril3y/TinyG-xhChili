@@ -1,0 +1,10 @@
+{
+  "name": "TinyG-xhChili",
+  "description": "A driver for the Xhc CNC pendant for TinyG and SPJS",
+  "version": "0.0.1",
+  "dependencies": {
+    "node-hid": "^0.3.2",
+    "optimist": "^0.6.1",
+    "ws": "^0.7.1"
+  }
+}

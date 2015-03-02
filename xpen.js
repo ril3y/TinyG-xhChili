@@ -1,6 +1,4 @@
 var HID = require("node-hid");
-var beq = require('buffer-equal');
-var bts = require('buffertools');
 var WebSocket = require('ws');
 var argv = require('optimist').argv;
 
@@ -12,7 +10,6 @@ var productId = 60272;
 
 //var dev = new HID.HID('USB_10ce_eb70_14100000');
 var dev = new HID.HID(vendorId, productId);
-
 var ws;
 var serialport = "";
 
