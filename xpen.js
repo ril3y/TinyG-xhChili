@@ -3,7 +3,6 @@ var WebSocket = require('ws');
 var argv = require('optimist').argv;
 
 
-
 var vendorId = 4302;
 var productId = 60272;
 
@@ -15,7 +14,7 @@ var serialport = "";
 var isPaused = false;
 
 
-var main = function() {
+var main = function () {
 
 
     if (argv.spjsServer != null) {
@@ -31,17 +30,18 @@ var main = function() {
         //Data Events from Websocket
         ws.onmessage = function (message) {
 
-            //==============
-            //Version Posted
-            //==============
-
 
             if (message.hasOwnProperty("data")) {  //We always get the data attribute from SJPS
                 try {
                     message = JSON.parse(message.data);
                     if (message.hasOwnProperty("Version")) {
+                        //==============
+                        //Version Posted
+                        //==============
                         console.log("SPJS Server Version:" + message.Version);
                         ws.send("list\n");
+
+
                     } else if (message.hasOwnProperty("D")) {
                         //==================================
                         //Data Message Update
@@ -50,61 +50,327 @@ var main = function() {
                         var message = JSON.parse(message.D);
 
 
-
                         //==================================
-                        //FEEDHOLD Parsing / State tracking code
+                        //FEEDHOLD Parsing / Units / State tracking code
                         //This code monitor for external requests to apply feed hold.
                         //With this we can do a feedhold in chilipeppr and then resume it from our pendant
                         //or do that in reverse.
-                        if(message.hasOwnProperty("sr") && message.sr.hasOwnProperty("stat")){
-                            if(message.sr.stat == 6) {//6 is Feedhold AKA pause
-                                isPaused = true;
-                            }if(message.sr.stat == 5){
-                                isPaused = false;
+                        if (message.hasOwnProperty("sr")) {
+                            if (message.sr.hasOwnProperty("stat")) {
+                                if (message.sr.stat == 6) {//6 is Feedhold AKA pause
+                                    isPaused = true;
+                                }
+                                if (message.sr.stat == 5) {
+                                    isPaused = false;
+                                }
                             }
+                            //END Feed Hold Tracking Code
+                            //==================================
+
+                            else if (message.sr.hasOwnProperty("unit")) {
+                                if (message.sr.unit == 1) { //1 == mm
+
+                                    units = 1;
+                                } else {                    //0 = inches
+                                    units = 0;
+                                }
+                                console.log("Changed Units to: " + units);
+                            }
+                            //END Units Tracking Code
+                            //==================================
+
                         }
-                        //END Feed Hold Tracking Code
-                        //==================================
-
-
-
                     } else if (message.hasOwnProperty("Commands")) {
                         //console.log("Command Message Recvd ", message);
                     } else if (message.hasOwnProperty("close")) {
                         console.log("Close Message Recvd", message);
                     } else if (message.hasOwnProperty("SerialPorts")) {
                         //console.log("Setting Serial Ports", message);
-                        for(i=0; i<message.SerialPorts.length; i++){
-                            if(message.SerialPorts[i].BufferAlgorithm == "tinyg"){
+                        for (i = 0; i < message.SerialPorts.length; i++) {
+                            if (message.SerialPorts[i].BufferAlgorithm == "tinyg") {
                                 serialport = message.SerialPorts[i].Name;
                                 console.log("\t==>Set Serial Port: " + serialport);
                             }
 
                         }
-
-                    }else {
+                    }
+                    else if (message.hasOwnProperty("Error")) {
+                        console.log("Error Message:", message);
+                    }
+                    else {
                         //Default Case when not sure of the message
                         //console.log("RECV DATA <==:", message);
                     }
-
-                } catch (e) {
+                }
+                catch (e) {
                     //console.log("ERROR PARSING: ", e); //Just ignore the non json messages
                 }
             }
+
+
+            else if (message.hasOwnProperty("debug")) {
+                console.log("Debugging Data", message);
+            }
         }//end on message data
-    } else {
+
+
+    }
+    else {
         console.log("ERROR: Please supply a SPJS server!");
         process.exit()
     }
 
 
     dev.on("data", function (data) {
+        console.log("DATA:", data);
         parseDataPacket(data);
 
     });
 
-}
 
+    //--------------------------
+
+//=====================
+//CMD Byte Packet Names
+//=====================
+    var CMD_START_BYTE = 0;
+    var CMD_BYTE1 = 1;
+    var CMD_PADDING = 2;
+    var CMD_AXIS_BYTE = 3;
+    var CMD_VELOCITY = 4;
+    var CMD_BYTE2 = 5;
+
+
+//=====================
+//DIAL Modes
+//=====================
+    var OFF_DIAL = 0x00;
+    var X_AXIS = 0x11;
+    var Y_AXIS = 0x12;
+    var Z_AXIS = 0x13;
+    var A_AXIS = 0x18;
+    var SPINDLE_DIAL = 0x14;
+    var FEED_DIAL = 0x15;
+
+    var getDialSetting = function (dialByte) {
+        switch (dialByte) {
+            case(OFF_DIAL):
+                return ("DIAL OFF");
+            case(X_AXIS):
+                return ("X");
+            case(Y_AXIS):
+                return ("Y");
+            case(Z_AXIS):
+                return ("Z");
+            case(A_AXIS):
+                return ("A");
+            case(SPINDLE_DIAL):
+                return ("SPINDLE");
+            case(FEED_DIAL):
+                return ("FEED");
+        }
+    };
+
+
+    var CMDS = [
+
+        {name: "keyup", value: [0x00, 0x9a], tinyg: "\n"},
+        {name: "reset", value: [0x17, 0x8d], tinyg: "None"},
+        {name: "sleep", value: [0x00, 0x00], tinyg: "None"},
+        {name: "stop", value: [0x16, 0x8c], tinyg: "!\n%\n"},
+        {name: "arrow1", value: [0x01, 0x9b], tinyg: "g28.3x0y0z0a0\n"}, //Set Zero
+        {name: "arrow2", value: [0x09, 0x93], tinyg: "g0x0y0z0a0\n"}, //Go to zero
+        {name: "rewind", value: [0x03, 0x99], tinyg: "None"},
+        {name: "spindle", value: [0x0c, 0x96], tinyg: "None"},
+        {name: "half", value: [0x06, 0x9c], tinyg: "None"},
+        {name: "zero", value: [0x07, 0x9d], tinyg: "g28.3"},
+        {name: "pause_resume", value: [0x02, 0x98], tinyg: "~ || !"},
+        {name: "probez", value: [0x04, 0x9e], tinyg: "g28.3z0"},
+        {name: "safez", value: [0x08, 0x92], tinyg: "g92"},
+        {name: "step++", value: [0x0d, 0x97], tinyg: "\n"},
+        {name: "model", value: [0x0e, 0x94]},
+        {name: "half", value: [0x03, 0x99], tinyg: "None"}
+    ];
+
+    var sendStopFlush = function () {
+        sendToSPJS("!\n%\n")
+    }
+
+    var parseCommand = function (data) {
+        for (i = 0; i < CMDS.length; i++) {
+            if (data[CMD_BYTE1] == CMDS[i].value[0] && data[CMD_BYTE2] == CMDS[i].value[1]) {
+
+                if (data[CMD_VELOCITY] != 0x00) {
+                    //We got a velocity, Now this is a JOG command vs a Keyup command.
+                    return ({name: "jog", value: [0x00, data[CMD_VELOCITY], 0x9a], tinyg: "g1f100"})
+                }
+
+                return (CMDS[i]);
+
+            } //eek!
+
+
+        }
+        return null;
+    };
+
+    var velocity = 1;
+    var count = 1;
+    var isJogging = false;
+    var jogMode = "incremental"; //vs "continuous"
+    var units = "mm";
+
+
+//var stepDistance = stepDistances[0];
+//var stepDistances = [
+//    {"one":1},
+//    {"tenth":0.1},
+//    {"hundreds": 0.001},
+//    {"thousand":0.0001} ];
+
+
+    //=================================================================================================
+    //
+    //                                    ---> JOGGING CODE HERE <---
+    //
+    //=================================================================================================
+
+    //Continuous is the machine will continue to jog as long as there are event dial events coming in.
+    var doJogContinuous = function (dialSetting, cmd) {
+        //build our jog command
+
+        //We need to figure out if this is a negative move or a positive move
+        if (cmd.value[1] > 0xaa) {
+            sign = "-";
+        } else {
+            sign = ""
+        }
+
+        velocity = cmd.value[1] + velocity * 2;
+        cmd.tinyg = "g91\ng1F200" + dialSetting + sign + count + "\n";
+        return (cmd);
+    };
+
+    //Incremental Will only single step then stop and wait for another click of the jog dial.
+    var doJogIncremental = function (dialSetting, cmd) {
+        //build our jog command
+
+        //We need to figure out if this is a negative move or a positive move
+        if (cmd.value[1] > 0xaa) {
+            sign = "-";
+        } else {
+            sign = ""
+        }
+
+        velocity = cmd.value[1] + velocity * 2;
+        cmd.tinyg = "g91\ng1F200" + dialSetting + sign + count + "\n";
+        return (cmd);
+    };
+    //=================================================================================================
+    //======================================= END JOG CODE ============================================
+    //=================================================================================================
+
+
+//This is our generic send method
+    var sendToSPJS = function (cmdString) {
+        if (ws.readyState == 1) {
+            //readystate == 1 means the websocket is open so we will try to write ot it.
+            console.log("Sending to Websocket: " + cmdString);
+            ws.send("send " + serialport + " " + cmdString);
+        }
+    }
+
+
+    var parseDataPacket = function (data) {
+        if (data[CMD_START_BYTE] == 0x04) { //0x04 is a constant for this device as the first byte
+            dialSetting = getDialSetting(data[CMD_AXIS_BYTE]);
+            _tmpCmd = parseCommand(data);
+
+
+            if (_tmpCmd && dialSetting != "DIAL OFF") {
+                console.log("DIAL: " + dialSetting + " Command: " + _tmpCmd.name, " TinyG: " + _tmpCmd.tinyg);
+
+
+                switch (_tmpCmd.name) {
+
+
+                    case("keyup"):
+                        //If we were jogging we are in incremental mode
+                        //We need to exit this mode now that we are done jogging.
+                        if (isJogging) {
+                            isJogging = false;
+
+                            //What this does is if you are in continuous mode you will move until
+                            //you stop twisting the dial.  This will then issue a feedhold flush command.
+                            if (jogMode == "continuous") {
+                                sendStopFlush();
+                                jogVelocity = 1;
+                            }
+
+                            sendToSPJS("g90\n")
+                            console.log("::-----Exiting Jog Mode------::");
+                        }
+                        break;
+
+                    case("jog"):
+                        console.log("::-----Entering Jog Mode------::");
+                        isJogging = true;
+                        if (jogMode == "incremental") {
+                            _tmpCmd = doJogIncremental(dialSetting, _tmpCmd);
+                        } else {
+                            _tmpCmd = doJogContinuous(dialSetting, _tmpCmd);
+                        }
+                        //command is build send it out
+                        sendToSPJS(_tmpCmd.tinyg);
+                        break;
+
+                    case("pause_resume"):
+                        if (isPaused) {
+                            console.log("Sending Resume");
+                            sendToSPJS("~\n");
+                        } else {
+                            sendToSPJS("!\n");
+                            console.log("Sending Feedhold/Pause");
+                        }
+                        break;
+
+                    case("step++"):
+                        break;//if(stepDistance)
+
+                    case("zero"):
+                        sendToSPJS(_tmpCmd.tinyg + dialSetting + "0\n");
+                        break;
+
+                    case("arrow2"): //Arrow2 is, at least for now go to zero on all axis
+                        sendToSPJS(_tmpCmd.tinyg);
+                        break;
+
+                    case("model"):
+                        console.log("-----Changing Jog Modes----");
+                        if (jogMode == "incremental") {
+                            jogMode = "continuous";
+                        } else {
+                            jogMode = "incremental";
+                        }
+                        console.log("MODE: " + jogMode);
+                        break;
+
+                    default:
+                        console.log("Un-Caught Case: " + _tmpCmd.name, _tmpCmd.value);
+                        break;
+
+
+                }
+
+
+            } else {
+                console.log("DIAL: " + dialSetting + " Command Code Unknown: ", data);
+
+            }
+        }
+    };
+
+}
 
 
 //==================================================
@@ -151,187 +417,34 @@ var main = function() {
 //];
 
 
-//=====================
-//CMD Byte Packet Names
-//=====================
-var CMD_START_BYTE = 0;
-var CMD_BYTE1 = 1;
-var CMD_PADDING = 2;
-var CMD_AXIS_BYTE = 3;
-var CMD_VELOCITY = 4;
-var CMD_BYTE2 = 5;
+var repl = require("repl");
 
 
-//=====================
-//DIAL Modes
-//=====================
-var OFF_DIAL = 0x00;
-var X_AXIS = 0x11;
-var Y_AXIS = 0x12;
-var Z_AXIS = 0x13;
-var A_AXIS = 0x18;
-var SPINDLE_DIAL = 0x14;
-var FEED_DIAL = 0x15;
-
-var getDialSetting = function (dialByte) {
-    switch (dialByte) {
-        case(OFF_DIAL):
-            return ("DIAL OFF");
-        case(X_AXIS):
-            return ("X");
-        case(Y_AXIS):
-            return ("Y");
-        case(Z_AXIS):
-            return ("Z");
-        case(A_AXIS):
-            return ("A");
-        case(SPINDLE_DIAL):
-            return ("SPINDLE");
-        case(FEED_DIAL):
-            return ("FEED");
-    }
-};
-
-
-
-
-var CMDS = [
-
-    {name: "keyup", value: [0x00, 0x9a], tinyg: "\n"},
-    {name: "reset", value: [0x17, 0x8d], tinyg: "None"},
-    {name: "sleep", value: [0x00, 0x00], tinyg: "None"},
-    {name: "stop", value: [0x16, 0x8c], tinyg: "!\n%\n"},
-    {name: "arrow1", value: [0x01, 0x9b], tinyg: "g28.3x0y0z0a0\n"}, //Set Zero
-    {name: "arrow2", value: [0x09, 0x93], tinyg: "g0x0y0z0a0\n"}, //Go to zero
-    {name: "rewind", value: [0x03, 0x99], tinyg: "None"},
-    {name: "spindle", value: [0x0c, 0x96], tinyg: "None"},
-    {name: "half", value: [0x06, 0x9c], tinyg: "None"},
-    {name: "zero", value: [0x07, 0x9d], tinyg: "g28.3"},
-    {name: "pause_resume", value: [0x02, 0x98], tinyg: "~ || !"},
-    {name: "probez", value: [0x04, 0x9e], tinyg: "g28.3z0"},
-    {name: "safez", value: [0x08, 0x92], tinyg: "g92"},
-    {name: "half", value: [0x03, 0x99], tinyg: "None"}
-];
-
-
-var parseCommand = function (data) {
-    for (i = 0; i < CMDS.length; i++) {
-        if (data[CMD_BYTE1] == CMDS[i].value[0] && data[CMD_BYTE2] == CMDS[i].value[1]) {
-
-            if(data[CMD_VELOCITY] != 0x00){
-                //We got a velocity, Now this is a JOG command vs a Keyup command.
-                return({name:"jog", value: [0x00,data[CMD_VELOCITY], 0x9a], tinyg:"g1f100" })
-            }
-
-            return (CMDS[i]);
-
-        } //eek!
-
-
-    }
-    return null;
-};
-
-var velocity = 1;
-var count = 1;
-var isJogging = false;
-
-var doJog = function(dialSetting, cmd){
-    //build our jog command
-
-    //We need to figure out if this is a negative move or a positive move
-    if(cmd.value[1] > 0xaa ){
-        sign = "-";
-    }else{
-        sign=""
-    }
-
-    velocity = cmd.value[1] + velocity*2;
-    cmd.tinyg = "g91\ng1F200"+dialSetting+sign+count+"\n";
-    return(cmd);
-}
-
-
-//This is our generic send method
-var sendToSPJS = function(cmdString){
-    if(ws.readyState == 1) {
-        //readystate == 1 means the websocket is open so we will try to write ot it.
-        console.log("Sending to Websocket: " + cmdString);
-        ws.send("send " + serialport +" "+ cmdString);
-    }
-}
-
-
-var parseDataPacket = function (data) {
-    if (data[CMD_START_BYTE] == 0x04) { //0x04 is a constant for this device as the first byte
-        dialSetting = getDialSetting(data[CMD_AXIS_BYTE]);
-        _tmpCmd = parseCommand(data);
-
-
-        if (_tmpCmd && dialSetting != "DIAL OFF") {
-            console.log("DIAL: " + dialSetting + " Command: " + _tmpCmd.name, " TinyG: " + _tmpCmd.tinyg);
-
-
-            switch(_tmpCmd.name){
-
-
-                case("keyup"):
-                    //If we were jogging we are in incremental mode
-                    //We need to exit this mode now that we are done jogging.
-                    if(isJogging){
-                        isJogging = false;
-                        sendToSPJS("g90\n")
-                        console.log("::-----Exiting Jog Mode------::");
-                    }
-                    break;
-
-                case("jog"):
-                    console.log("::-----Entering Jog Mode------::");
-                    isJogging = true;
-                    _tmpCmd = doJog(dialSetting, _tmpCmd);
-                    sendToSPJS(_tmpCmd.tinyg);
-                    break;
-
-                case("pause_resume"):
-                    if(isPaused){
-                        console.log("Sending Resume");
-                        sendToSPJS("~\n");
-                    }else{
-                        sendToSPJS("!\n");
-                        console.log("Sending Feedhold/Pause");
-                    }
-                    break;
-
-                case("zero"):
-                    sendToSPJS(_tmpCmd.tinyg+dialSetting+"0\n");
-                    break;
-
-
-                case("zero"):
-                    sendToSPJS(_tmpCmd.tinyg+dialSetting+"0\n");
-                    break;
-
-                case("arrow2"): //Arrow2 is, at least for now go to zero on all axis
-                    sendToSPJS(_tmpCmd.tinyg);
-                    break;
-
-                default:
-                    console.log(_tmpCmd.name, _tmpCmd.value);
-                    break;
-
-
-            }
-
-
-
-        } else {
-            console.log("DIAL: " + dialSetting + " Command Code Unknown: ", data);
-
-        }
-    }
-};
-
-
+var replServer = repl.start({
+    prompt: "xhcPen > "
+});
 
 
 main();
+
+
+replServer.context.main = main;
+
+
+//while(1){
+//
+//    dev.write([0x6,0xfe,0xfd, 0x02, 0x00, 0x00, 0x7c, 0x95]);
+//    dev.write([0x6,0xa,0x80, 0x00, 0x00, 0x00, 0x00, 0x00]);
+//}
+//dev.write([0x6,0xfe,0xfd, 0x02, 0x00, 0x00, 0x7c, 0x95]);
+
+//dev.write([0x6,0x00,0x00, 0x41, 0x91, 0x00, 0x00, 0x00]);
+
+//dev.write([0x6,0x00,0x00, 0x00, 0x00, 0x00, 0x00, 0x39]); //This will set the F: to 57 0x39 == 57
+
+//setup bytes for Spindle:
+//dev.write([0x06, 0x0, 0x2,0x0, 0x0, 0x0, 0x3, 0x0]);
+//set value packet for spindle:
+// 06 00 00 00 00 00 00 48 //0x48 == 68
+
+
