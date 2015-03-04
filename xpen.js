@@ -13,6 +13,9 @@ var ws;
 var serialport = "";
 var isPaused = false;
 
+const INCHES = 0;
+const MM = 1;
+
 
 var main = function () {
 
@@ -68,11 +71,10 @@ var main = function () {
                             //==================================
 
                             else if (message.sr.hasOwnProperty("unit")) {
-                                if (message.sr.unit == 1) { //1 == mm
-
-                                    units = 1;
+                                if (message.sr.unit == MM) { //1 == mm
+                                    units = MM;
                                 } else {                    //0 = inches
-                                    units = 0;
+                                    units = INCHES;
                                 }
                                 console.log("Changed Units to: " + units);
                             }
@@ -214,11 +216,16 @@ var main = function () {
         return null;
     };
 
-    var velocity = 1;
-    var count = 1;
+    var count = 15;
     var isJogging = false;
     var jogMode = "incremental"; //vs "continuous"
     var units = "mm";
+    var stepDistance = 0;
+    var jogVelocityMultiplier = 1;
+    var velocityMin = 40; //mm/min
+    var calculatedVelocity = velocityMin;
+    var distanceTable = [0.1, 0.01, 0.001];
+
 
 
 //var stepDistance = stepDistances[0];
@@ -239,15 +246,26 @@ var main = function () {
     var doJogContinuous = function (dialSetting, cmd) {
         //build our jog command
 
+        _velocity = cmd.value[1];
         //We need to figure out if this is a negative move or a positive move
-        if (cmd.value[1] > 0xaa) {
+        if (_velocity > 0xaa) {
             sign = "-";
+            _velocity = 255 - _velocity; // When rotating counter clockwise the velocity
+            //Comes in as 0xfe for 1 which we will subtract from 0xff to get a sane number
         } else {
             sign = ""
         }
 
-        velocity = cmd.value[1] + velocity * 2;
-        cmd.tinyg = "g91\ng1F200" + dialSetting + sign + count + "\n";
+
+        tmpCalc = (_velocity * 10) * velocityMin;
+        if(tmpCalc > calculatedVelocity){
+            calculatedVelocity = tmpCalc; //If we are moving faster than previously we will increase our speed.
+        }
+
+        console.log("SANE VELOCITY: " + _velocity);
+
+
+        cmd.tinyg = "g91\ng1F" + calculatedVelocity + dialSetting + sign + count + "\n";
         return (cmd);
     };
 
@@ -262,9 +280,24 @@ var main = function () {
             sign = ""
         }
 
-        velocity = cmd.value[1] + velocity * 2;
-        cmd.tinyg = "g91\ng1F200" + dialSetting + sign + count + "\n";
+
+        cmd.tinyg = "g91\ng1F5" + dialSetting + sign + getStepDistance() + "\n";
         return (cmd);
+    };
+
+
+    var getStepDistance = function(){
+        return distanceTable[stepDistance];
+    };
+
+    var setStepDistance = function () {
+        stepDistance = stepDistance + 1;
+
+        //We only have 3 values in the array for distanceTable
+        //So if its 3 lets reset it back to 0
+        if (stepDistance == 3) {
+            stepDistance = 0;
+        }
     };
     //=================================================================================================
     //======================================= END JOG CODE ============================================
@@ -304,7 +337,7 @@ var main = function () {
                             //you stop twisting the dial.  This will then issue a feedhold flush command.
                             if (jogMode == "continuous") {
                                 sendStopFlush();
-                                jogVelocity = 1;
+                                calculatedVelocity = velocityMin;
                             }
 
                             sendToSPJS("g90\n")
@@ -334,15 +367,17 @@ var main = function () {
                         }
                         break;
 
-                    case("step++"):
-                        break;//if(stepDistance)
-
                     case("zero"):
                         sendToSPJS(_tmpCmd.tinyg + dialSetting + "0\n");
                         break;
 
                     case("arrow2"): //Arrow2 is, at least for now go to zero on all axis
                         sendToSPJS(_tmpCmd.tinyg);
+                        break;
+
+                    case("step++"):
+                        console.log("Changing Step Rate for Incremental Mode");
+                        console.log("\t " + getStepDistance());
                         break;
 
                     case("model"):
