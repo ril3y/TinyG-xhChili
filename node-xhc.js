@@ -54,98 +54,79 @@ var Xpen = function () {
 
         {
             name: "keyup",
-            value: [0x00, 0x9a],
-            tinyg: "\n"
+            value: [0x00, 0x9a]
         },
         {
             name: "reset",
-            value: [0x17, 0x8d],
-            tinyg: "None"
+            value: [0x17, 0x8d]
         },
         {
             name: "sleep",
-            value: [0x00, 0x00],
-            tinyg: "None"
+            value: [0x00, 0x00]
         },
         {
             name: "stop",
-            value: [0x16, 0x8c],
-            tinyg: "!\n%\n"
+            value: [0x16, 0x8c]
         },
         {
             name: "arrow1",
-            value: [0x01, 0x9b],
-            tinyg: "g28.3x0y0z0a0\n"
+            value: [0x01, 0x9b]
         }, //Set Zero
         {
             name: "arrow2",
-            value: [0x09, 0x93],
-            tinyg: "g0x0y0z0a0\n"
+            value: [0x09, 0x93]
         }, //Go to zero
         {
             name: "rewind",
-            value: [0x03, 0x99],
-            tinyg: "None"
+            value: [0x03, 0x99]
         },
         {
             name: "spindle",
-            value: [0x0c, 0x96],
-            tinyg: "None"
+            value: [0x0c, 0x96]
         },
         {
             name: "macro_1",
-            value: [0x0a, 0x90],
-            tinyg: "None"
+            value: [0x0a, 0x90]
         },
         {
             name: "macro_2",
-            value: [0x0b, 0x91],
-            tinyg: "None"
+            value: [0x0b, 0x91]
         },
         {
             name: "macro_3",
-            value: [0x05, 0x9f],
-            tinyg: "None"
+            value: [0x05, 0x9f]
         },
         {
             name: "macro_6",
-            value: [0x0f, 0x95],
-            tinyg: "None"
+            value: [0x0f, 0x95]
         },
         {
             name: "macro_7",
-            value: [0x10, 0x8a],
-            tinyg: "None"
+            value: [0x10, 0x8a]
         },
         {
             name: "half",
-            value: [0x06, 0x9c],
-            tinyg: "None"
+            value: [0x06, 0x9c]
         },
         {
             name: "zero",
-            value: [0x07, 0x9d],
-            tinyg: "g28.3"
+            value: [0x07, 0x9d]
         },
         {
             name: "pause_resume",
-            value: [0x02, 0x98],
-            tinyg: "~ || !"
+            value: [0x02, 0x98]
         },
         {
             name: "probez",
-            value: [0x04, 0x9e],
-            tinyg: "g28.3z0"
+            value: [0x04, 0x9e]
         },
         {
             name: "safez",
-            value: [0x08, 0x92],
-            tinyg: "g92"
+            value: [0x08, 0x92]
         },
         {
             name: "step++",
-            value: [0x0d, 0x97],
-            tinyg: "\n"
+            value: [0x0d, 0x97]
         },
         {
             name: "model",
@@ -153,8 +134,7 @@ var Xpen = function () {
         },
         {
             name: "half",
-            value: [0x03, 0x99],
-            tinyg: "None"
+            value: [0x03, 0x99]
         }
     ];
 
