@@ -1,18 +1,11 @@
 var HID = require("node-hid");
 var WebSocket = require('ws');
 var argv = require('optimist').argv;
-var Debug = require("console-debug");
 var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 
 
-var console = new Debug({
-    uncaughtExceptionCatch: false, // Do we want to catch uncaughtExceptions?
-    consoleFilter: [], // Filter these console output types, Examples: 'LOG', 'WARN', 'ERROR', 'DEBUG', 'INFO'
-    logToFile: true, // if true, will put console output in a log file folder called 'logs'
-    logFilter: ['LOG', 'DEBUG', 'INFO'], // Examples: Filter these types to not log to file, Examples: 'LOG', 'WARN', 'ERROR', 'DEBUG', 'INFO'
-    colors: true // do we want pretty pony colors in our console output?
-});
+
 
 
 var Xpen = function () {
@@ -174,7 +167,7 @@ Xpen.prototype._findAndConnectPendant = function () {
         });
 
     } catch (err) {
-        console.error("Unable to locate pendant... Check USB pendant is plugged in.");
+        //console.error("Unable to locate pendant... Check USB pendant is plugged in.");
     }
 };
 
@@ -468,9 +461,9 @@ var parseDataPacket = function (data) {
                     break;
 
                 case ("step++"):
-                    console.log("Changing Step Rate for Incremental Mode");
+                    //console.log("Changing Step Rate for Incremental Mode");
                     setStepDistance();
-                    console.log("\t " + getStepDistance());
+                    //console.log("\t " + getStepDistance());
                     return ({
                         'type': 'change',
                         'dialSetting': dialSetting,
@@ -479,17 +472,17 @@ var parseDataPacket = function (data) {
                     break;
 
                 case ("model"):
-                    console.log("-----Changing Jog Modes----");
+                    //console.log("-----Changing Jog Modes----");
                     if (jogMode == "incremental") {
                         jogMode = "continuous";
                     } else {
                         jogMode = "incremental";
                     }
-                    console.log("MODE: " + jogMode);
+                    //console.log("MODE: " + jogMode);
                     break;
 
                 default:
-                    console.log("Un-Caught Case: " + _tmpCmd.name, _tmpCmd.value);
+                    //console.log("Un-Caught Case: " + _tmpCmd.name, _tmpCmd.value);
                     break;
 
 
@@ -497,7 +490,7 @@ var parseDataPacket = function (data) {
 
 
         } else {
-            console.log("DIAL: " + dialSetting + " Command Code Unknown: " + data.toString('hex'));
+            //console.log("DIAL: " + dialSetting + " Command Code Unknown: " + data.toString('hex'));
 
         }
     }
