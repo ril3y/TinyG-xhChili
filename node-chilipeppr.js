@@ -25,7 +25,6 @@ var NodeChilipeppr = function () {
     //=====================
     //CMD Byte Packet Names
     //=====================
-    CMD_BYTE2 = 5;
 
 
 };

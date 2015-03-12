@@ -5,9 +5,6 @@ var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 
 
-
-
-
 var Xpen = function () {
     EventEmitter.call(this);
     isPaused = false;
@@ -18,8 +15,18 @@ var Xpen = function () {
     velocityMin = 40; //mm/min
     calculatedVelocity = velocityMin;
 
+    //==========================================================
+    //Macros - These commands are sent when the macro is called.
+    //==========================================================
+    this.macro1 = "Macro 1";
+    this.macro2 = "Macro 2";
+    this.macro3 = "Macro 3";
+    this.macro4 = "";
+    this.macro6 = "Macro 6";
+    this.macro7 = "Macro 7";
 
 
+    //CONSTANTS
     this.vendorId = 4302;
     this.productId = 60272;
 
@@ -158,7 +165,7 @@ Xpen.prototype._findAndConnectPendant = function () {
         var dev = new HID.HID(this.vendorId, this.productId);
         dev.on("data", function (data) {
             //_dial = _getDialSetting(data[CMD_DIAL_BYTE]);
-            _packet = parseDataPacket(data);
+            _packet = self.parseDataPacket(data);
             if (_packet != null) {
                 //This emits the type of packet and the packet data to whatever code is
                 //listening to the xhc module
@@ -237,7 +244,7 @@ var getJogDirectionVelocity = function (data) {
 };
 
 
- var _resetVelocities = function(){
+var _resetVelocities = function () {
     calculatedVelocity = velocityMin;
 
 }
@@ -253,7 +260,42 @@ var calculateContinuousVelocity = function (vel) {
 };
 
 
-var parseDataPacket = function (data) {
+Xpen.prototype.getMacroByNumber = function (macroNumber) {
+    var self = this;
+    switch (macroNumber) {
+        case(1):
+            return (this.macro1);
+        case(2):
+            return (this.macro2);
+        case(3):
+            return (this.macro3);
+        case(4):
+            return (this.macro4);
+        case(6):
+            return (this.macro6);
+        case(7):
+            return (this.macro7);
+    }
+};
+
+var setMacroByNumber = function (macroNumber, funcBody) {
+    switch (macroNumber) {
+        case(1):
+            this.macro1 = funcBody;
+        case(2):
+            this.macro2 = funcBody;
+        case(3):
+            this.macro3 = funcBody;
+        case(4):
+            this.macro4 = funcBody;
+        case(6):
+            this.macro5 = funcBody;
+        case(7):
+            this.macro6 = funcBody;
+    }
+}
+
+Xpen.prototype.parseDataPacket = function (data) {
     if (data[CMD_START_BYTE] == 0x04) { //0x04 is a constant for this device as the first byte
         dialSetting = _getDialSetting(data[CMD_DIAL_BYTE]);
         _tmpCmd = parseCommand(data);
@@ -395,22 +437,17 @@ var parseDataPacket = function (data) {
                     return ({
                         'type': 'key_press',
                         'dialSetting': dialSetting,
-                        'cmd': _tmpCmd.name //zero
+                        'cmd': _tmpCmd.name,
+                        'value': this.getMacroByNumber(1)
                     });
                     break;
 
-                case ("macro_1"):
-                    return ({
-                        'type': 'key_press',
-                        'dialSetting': dialSetting,
-                        'cmd': _tmpCmd.name //zero
-                    });
-                    break;
                 case ("macro_2"):
                     return ({
                         'type': 'key_press',
                         'dialSetting': dialSetting,
-                        'cmd': _tmpCmd.name //zero
+                        'cmd': _tmpCmd.name,
+                        'value': this.getMacroByNumber(2)
                     });
                     break;
 
@@ -418,21 +455,26 @@ var parseDataPacket = function (data) {
                     return ({
                         'type': 'key_press',
                         'dialSetting': dialSetting,
-                        'cmd': _tmpCmd.name //zero
+                        'cmd': _tmpCmd.name,
+                        'value': this.getMacroByNumber(3)
+
+
                     });
                     break;
                 case ("macro_6"):
                     return ({
                         'type': 'key_press',
                         'dialSetting': dialSetting,
-                        'cmd': _tmpCmd.name //zero
+                        'cmd': _tmpCmd.name,
+                        'value': this.getMacroByNumber(6)
                     });
                     break;
                 case ("macro_7"):
                     return ({
                         'type': 'key_press',
                         'dialSetting': dialSetting,
-                        'cmd': _tmpCmd.name //zero
+                        'cmd': _tmpCmd.name,
+                        'value': this.getMacroByNumber(7)
                     });
                     break;
 
@@ -484,10 +526,7 @@ var parseDataPacket = function (data) {
                 default:
                     //console.log("Un-Caught Case: " + _tmpCmd.name, _tmpCmd.value);
                     break;
-
-
             }
-
 
         } else {
             //console.log("DIAL: " + dialSetting + " Command Code Unknown: " + data.toString('hex'));
