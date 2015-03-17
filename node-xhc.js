@@ -6,6 +6,7 @@ var util = require('util');
 
 
 var Xpen = function () {
+    var self = this;
     EventEmitter.call(this);
     isPaused = false;
     isJogging = false;
@@ -14,6 +15,9 @@ var Xpen = function () {
     jogMode = "incremental"; //vs "continuous"
     velocityMin = 40; //mm/min
     calculatedVelocity = velocityMin;
+
+    var dateObj = new Date();
+
 
     //==========================================================
     //Macros - These commands are sent when the macro is called.
@@ -29,6 +33,8 @@ var Xpen = function () {
     //CONSTANTS
     this.vendorId = 4302;
     this.productId = 60272;
+
+    self.dialSetting = "";
 
 
     //=====================
@@ -162,8 +168,9 @@ util.inherits(Xpen, EventEmitter);
 Xpen.prototype._findAndConnectPendant = function () {
     var self = this;
     try {
-        var dev = new HID.HID(this.vendorId, this.productId);
-        dev.on("data", function (data) {
+        self.dev = new HID.HID(this.vendorId, this.productId);
+        self.dev.on("data", function (data) {
+            //console.log("DATA: ", data);
             //_dial = _getDialSetting(data[CMD_DIAL_BYTE]);
             _packet = self.parseDataPacket(data);
             if (_packet != null) {
@@ -174,7 +181,7 @@ Xpen.prototype._findAndConnectPendant = function () {
         });
 
     } catch (err) {
-        //console.error("Unable to locate pendant... Check USB pendant is plugged in.");
+        console.error("Unable to locate pendant... Check USB pendant is plugged in.");
     }
 };
 
@@ -237,7 +244,7 @@ var getJogDirectionVelocity = function (data) {
         _velocity = 255 - _velocity; // When rotating counter clockwise the velocity
         //Comes in as 0xfe for 1 which we will subtract from 0xff to get a sane number
     } else {
-        sign = "+"
+        sign = ""
     }
 
     return ([sign, _velocity]);
@@ -246,8 +253,8 @@ var getJogDirectionVelocity = function (data) {
 
 var _resetVelocities = function () {
     calculatedVelocity = velocityMin;
+};
 
-}
 //Continuous is the machine will continue to jog as long as there are event dial events coming in.
 var calculateContinuousVelocity = function (vel) {
     //build our jog command
@@ -269,8 +276,6 @@ Xpen.prototype.getMacroByNumber = function (macroNumber) {
             return (this.macro2);
         case(3):
             return (this.macro3);
-        case(4):
-            return (this.macro4);
         case(6):
             return (this.macro6);
         case(7):
@@ -278,36 +283,49 @@ Xpen.prototype.getMacroByNumber = function (macroNumber) {
     }
 };
 
-var setMacroByNumber = function (macroNumber, funcBody) {
-    switch (macroNumber) {
-        case(1):
-            this.macro1 = funcBody;
-        case(2):
-            this.macro2 = funcBody;
-        case(3):
-            this.macro3 = funcBody;
-        case(4):
-            this.macro4 = funcBody;
-        case(6):
-            this.macro5 = funcBody;
-        case(7):
-            this.macro6 = funcBody;
-    }
-}
+//var setMacroByNumber = function (macroNumber, funcBody) {
+//    switch (macroNumber) {
+//        case(1):
+//            this.macro1 = funcBody;
+//        case(2):
+//            this.macro2 = funcBody;
+//        case(3):
+//            this.macro3 = funcBody;
+//        case(4):
+//            this.macro4 = funcBody;
+//        case(6):
+//            this.macro5 = funcBody;
+//        case(7):
+//            this.macro6 = funcBody;
+//    }
+//}
+
+Xpen.prototype.getJogMode = function(){
+    return(jogMode);
+};
 
 Xpen.prototype.parseDataPacket = function (data) {
+    self = this;
     if (data[CMD_START_BYTE] == 0x04) { //0x04 is a constant for this device as the first byte
-        dialSetting = _getDialSetting(data[CMD_DIAL_BYTE]);
+
+        //We are going to see if we noticed the dial indicator changed
+        _tmpDial = _getDialSetting(data[CMD_DIAL_BYTE]);
+
+        if(self.dialSetting != _tmpDial){
+            //We are going to emit this to the "change" listener.
+            self.dialSetting = _tmpDial;
+            this.emit("change",{"cmd":"dial_indicator","value":_tmpDial})
+        }
+
         _tmpCmd = parseCommand(data);
 
 
-        if (_tmpCmd && dialSetting != "DIAL OFF") {
+        if (_tmpCmd && self.dialSetting != "DIAL OFF") {
 
             switch (_tmpCmd.name) {
                 case ("keyup"):
                     //keyup is a weird name for this event in regards to jogging but its the same
                     //as lifting a key after press.  So this why we must keep state on jogging.
-
                     //If we were jogging we are in incremental mode
                     //We need to exit this mode now that we are done jogging.
                     if (isJogging) {
@@ -321,18 +339,21 @@ Xpen.prototype.parseDataPacket = function (data) {
                         if (jogMode == "continuous") {
                             return ({
                                 'type': 'jog',
-                                'dialSetting': dialSetting,
-                                'cmd': "jog_stop"
+                                'dialSetting': self.dialSetting,
+                                'cmd': "jog_continuous_finish"
                             });
                             break;
                         } else {
                             return ({
                                 'type': 'jog',
-                                'dialSetting': dialSetting,
-                                'cmd': "jog_finish"
+                                'dialSetting': self.dialSetting,
+                                'cmd': "jog_incremental_finish"
                             });
                             break;
                         }
+
+                    }else{
+                        break;
                     }
 
 
@@ -345,7 +366,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                     if (jogMode == "incremental") { //Incremental Jog Sent
                         return ({
                             'type': 'jog',
-                            'dialSetting': dialSetting,
+                            'dialSetting': self.dialSetting,
                             'cmd': "jog_incremental",
                             'dir': dir,
                             'value': vel
@@ -355,14 +376,13 @@ Xpen.prototype.parseDataPacket = function (data) {
                     } else { //Continuous Mode Jog
                         return ({
                             'type': 'jog',
-                            'dialSetting': dialSetting,
+                            'dialSetting': self.dialSetting,
                             'cmd': "jog_continuous",
                             'dir': _dirvel[0],
                             'value': calculateContinuousVelocity(vel)
                         });
                         break;
                     }
-
 
                 case ("pause_resume"):
                     if (isPaused) {
@@ -372,7 +392,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                     }
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _name //feedhold/resume
                     });
                     break;
@@ -380,7 +400,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("zero"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //zero
                     });
                     break;
@@ -388,14 +408,14 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("half"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //zero
                     });
                     break;
                 case ("spindle"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //zero
                     });
                     break;
@@ -403,7 +423,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("rewind"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //zero
                     });
                     break;
@@ -411,7 +431,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("reset"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //zero
                     });
                     break;
@@ -419,7 +439,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("stop"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //zero
                     });
                     break;
@@ -428,7 +448,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("arrow1"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //zero
                     });
                     break;
@@ -436,7 +456,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("macro_1"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name,
                         'value': this.getMacroByNumber(1)
                     });
@@ -445,7 +465,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("macro_2"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name,
                         'value': this.getMacroByNumber(2)
                     });
@@ -454,17 +474,15 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("macro_3"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name,
                         'value': this.getMacroByNumber(3)
-
-
                     });
                     break;
                 case ("macro_6"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name,
                         'value': this.getMacroByNumber(6)
                     });
@@ -472,7 +490,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("macro_7"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name,
                         'value': this.getMacroByNumber(7)
                     });
@@ -481,7 +499,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("safez"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //safe_z
                     });
                     break;
@@ -489,7 +507,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("probez"):
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //safe_z
                     });
                     break;
@@ -497,7 +515,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                 case ("arrow2"): //Arrow2 is, at least for now go to zero on all axis
                     return ({
                         'type': 'key_press',
-                        'dialSetting': dialSetting,
+                        'dialSetting': self.dialSetting,
                         'cmd': _tmpCmd.name //arrow2
                     });
                     break;
@@ -508,8 +526,9 @@ Xpen.prototype.parseDataPacket = function (data) {
                     //console.log("\t " + getStepDistance());
                     return ({
                         'type': 'change',
-                        'dialSetting': dialSetting,
-                        'value': getStepDistance() //incremental value
+                        'dialSetting': self.dialSetting,
+                        'cmd':"step_distance",
+                        'value': this.getStepDistance() //incremental value
                     });
                     break;
 
@@ -524,7 +543,7 @@ Xpen.prototype.parseDataPacket = function (data) {
                     break;
 
                 default:
-                    //console.log("Un-Caught Case: " + _tmpCmd.name, _tmpCmd.value);
+                    console.log("Un-Caught Case: " + _tmpCmd.name, _tmpCmd.value);
                     break;
             }
 
@@ -535,15 +554,15 @@ Xpen.prototype.parseDataPacket = function (data) {
     }
 };
 
-var getStepDistance = function () {
+Xpen.prototype.getStepDistance = function () {
     return distanceTable[stepDistance];
 };
 
 var setStepDistance = function () {
 
     //We only have 3 values in the array for distanceTable
-    //So if its 3 lets reset it back to 0
-    if (stepDistance == 3) {
+    //So if its 2 lets reset it back to 0
+    if (stepDistance == 2) {
         stepDistance = 0;
     } else {
         stepDistance = stepDistance + 1;
@@ -559,6 +578,12 @@ Xpen.prototype.setUnits = function (units) {
     }
     console.info("Changing Units to: " + this.units);
 
+};
+
+Xpen.prototype.transmit = function(buffer){
+    var self = this;
+    console.info("Writing: " + buffer.toString('hex'));
+    self.dev.write(buffer);
 };
 
 Xpen.prototype.test = function (b) {

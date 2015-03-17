@@ -1,47 +1,169 @@
 var WebSocket = require('ws');
-var Debug = require("console-debug");
 var EventEmitter = require('events').EventEmitter;
 var Netmask = require('netmask').Netmask;
 var os = require("os");
-
-var console = new Debug({
-    uncaughtExceptionCatch: false, // Do we want to catch uncaughtExceptions?
-    consoleFilter: [], // Filter these console output types, Examples: 'LOG', 'WARN', 'ERROR', 'DEBUG', 'INFO'
-    logToFile: true, // if true, will put console output in a log file folder called 'logs'
-    logFilter: ['LOG', 'DEBUG', 'INFO'], // Examples: Filter these types to not log to file, Examples: 'LOG', 'WARN', 'ERROR', 'DEBUG', 'INFO'
-    colors: true // do we want pretty pony colors in our console output?
-});
+var util = require('util');
+var network = require('network');
 
 
-var NodeChilipeppr = function () {
-    EventEmitter.call(this);
+function NodeChilipeppr() {
+    var self = this;
+    this.connectedPort = null;
+    this.spjsIsConnected = false;
+    this.posx = 0;
+    this.poxy = 0;
+    this.posz = 0;
+    this.posa = 0;
 
+    this.feedrate = 0;
+    this.spindle = 0;
 
-    //=====================
-    // Defines
-    //=====================
-
-
-    //=====================
-    //CMD Byte Packet Names
-    //=====================
-
+    self.feed_hold = false;
+    self.portsAvailable = [];
+    self.serversAvailable = [];
 
 };
 
 util.inherits(NodeChilipeppr, EventEmitter);
 
-NodeChilipeppr.prototype.scan = function () {
-    networks = os.networkInterfaces();
 
-    for (i = 0; i < networks.length; i++) {  //loops through interfaces
-        //for(n=0; n<networks[i].length; n++){ //loops through addresses on interfaces
-        //    if(networks[i][n].hasOwnProperty)
-        console.debug("NET: " + networks[i]);
+NodeChilipeppr.prototype.scan = function (network, port) {
+    var self = this;
+
+
+    scancntsuccess = 0;
+    scancnterr = 0;
+    cnt = 0;
+
+    subnet = '192.168.1.';
+
+    //====================
+    //Set the default Port
+    //====================
+
+    if (!port) {
+        port = 8989;
     }
 
 
+    for (var ctr = 1; ctr < 255; ctr++) {
+        var conn = new WebSocket("ws://" + subnet + ctr + ":" + port + "/ws");
+        var self = this;
+
+        conn.on("open", function (evt) {
+            scancntsuccess++;
+            this.serversAvailable.push("ws://" + subnet + ctr + ":" + port + "/ws");
+            this.emit("connection", {"type": "server_added", "value": "ws://" + subnet + ctr + ":" + port + "/ws"});
+            console.log("found one:", "ws://" + subnet + ctr + ":" + port + "/ws");
+
+
+        });
+
+        conn.onerror = function (evt) {
+            scancnterr++;
+            console.log("Found " + scancntsuccess + ", Scanned " + (scancntsuccess + scancnterr));
+        };
+    }
+    ;
+}
+
+NodeChilipeppr.prototype.processStatusReport = function (statusReport) {
+    var self = this;
+
+    //TODO:  We need to walk over the sr object now and parse values when present.
+
+
+    //console.log("STATUS REPORT: ", statusReport);
+
+    if (statusReport.sr.hasOwnProperty("unit")) {
+        this.emit("change", statusReport.sr.dist);
+    } else if(statusReport.sr.hasOwnProperty("stat") ) {
+        if (statusReport.sr.stat == 6) {//6 is Feedhold AKA pause
+            self.feed_hold = true;
+
+            this.emit("control", {"feed_hold":true});
+        }
+        if (statusReport.sr.stat == 5) {
+
+            self.feed_hold = false;
+            this.emit("control", {"feed_hold":false});
+
+        }
+    }
 };
+
+
+
+NodeChilipeppr.prototype.send = function (message) {
+    var self = this;
+    if (!ws.readyState == 1) {
+        self.emit("error", {"error": "websocket is not connected"});
+    } else if (this.connectedPort == null) {
+        self.emit("error", {"error": "spjs is not connected to any serial port"});
+    } else {
+        ws.send("send " + this.connectedPort + " " +message);
+    }
+};
+
+
+NodeChilipeppr.prototype.findConnectedSerialPort = function (data) {
+    //console.log("SerialPorts:",data.SerialPorts)
+    for (p = 0; p <= data.SerialPorts.length; p++) {
+        if (data.SerialPorts[p].IsOpen && data.SerialPorts[p].BufferAlgorithm == "tinyg") {
+            console.log("Port Is Open: ", data.SerialPorts[p])
+            this.connectedPort = data.SerialPorts[p].Name;
+            this.spjsIsConnected = true;
+            this.emit("connection", {"type": "connected", "name": this.connectedPort});
+        }
+    }
+};
+
+NodeChilipeppr.prototype.connect = function (server, port) {
+    var self = this;
+    //Open Websocket Server
+    ws = new WebSocket("ws://" + server + ":" + port + "/ws");
+
+    ws.on("message", function (data) {
+        //this.processStat(data);
+        //console.log("DATA:", data);
+        try {
+            data = JSON.parse(data);
+            if (data.hasOwnProperty("D")) {
+                try {
+                    message = JSON.parse(data.D);
+                    if (message.hasOwnProperty("sr")) {
+                        //==============
+                        //Status Report Posted
+                        //==============
+                        self.processStatusReport(message);
+                    }
+                } catch (err) {
+
+                }
+            } else if (data.hasOwnProperty("Version")) {
+                console.log("VERSION: " + data.Version);
+            } else if (data.hasOwnProperty("SerialPorts")) {
+                self.findConnectedSerialPort(data);
+            }
+        } catch (err) {
+            //NOT JSON
+
+        }
+
+
+        //self.processStatusReport(data);
+        //self.emit('debug', data);
+    });
+
+    ws.onclose = this.OnClose;
+    ws.on("open", function () {
+        console.log("Opened Port: ");
+        ws.send("list\n"); //We request a listing of ports on connect.
+    });
+
+};
+module.exports = NodeChilipeppr;
+
 
 //ws = new WebSocket("ws://" + argv.spjsServer + ":8989/ws");
 //
@@ -135,4 +257,3 @@ NodeChilipeppr.prototype.scan = function () {
 //    }
 //};
 
-module.exports = NodeChilipeppr;
